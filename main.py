@@ -13,6 +13,9 @@ setup_logger(log_level=args.verbose)
 
 
 def execute_prestartup_script():
+    """
+    执行预处理脚本
+    """
     def execute_script(script_path):
         module_name = os.path.splitext(script_path)[0]
         try:
@@ -93,6 +96,7 @@ from server import BinaryEventTypes
 import nodes
 import comfy.model_management
 
+
 def cuda_malloc_warning():
     device = comfy.model_management.get_torch_device()
     device_name = comfy.model_management.get_torch_device_name(device)
@@ -104,7 +108,12 @@ def cuda_malloc_warning():
         if cuda_malloc_warning:
             logging.warning("\nWARNING: this card most likely does not support cuda-malloc, if you get \"CUDA error\" please run ComfyUI with: --disable-cuda-malloc\n")
 
-def prompt_worker(q, server):
+
+def prompt_worker(q: execution.PromptQueue, server):
+    """
+    q 是 PromptQueue 类的实例
+    server 是 PromptServer 类的实例
+    """
     e = execution.PromptExecutor(server, lru_size=args.cache_lru)
     last_gc_collect = 0
     need_gc = False
@@ -122,8 +131,10 @@ def prompt_worker(q, server):
             prompt_id = item[1]
             server.last_prompt_id = prompt_id
 
+            # 执行
             e.execute(item[2], prompt_id, item[3], item[4])
             need_gc = True
+            # 任务结束标记
             q.task_done(item_id,
                         e.history_result,
                         status=execution.PromptQueue.ExecutionStatus(
@@ -137,6 +148,7 @@ def prompt_worker(q, server):
             execution_time = current_time - execution_start_time
             logging.info("Prompt executed in {:.2f} seconds".format(execution_time))
 
+        # 清理
         flags = q.get_flags()
         free_memory = flags.get("free_memory", False)
 
@@ -159,10 +171,12 @@ def prompt_worker(q, server):
                 last_gc_collect = current_time
                 need_gc = False
 
+
 async def run(server, address='', port=8188, verbose=True, call_on_start=None):
     addresses = []
     for addr in address.split(","):
         addresses.append((addr, port))
+    # 执行两个协程
     await asyncio.gather(server.start_multi_address(addresses, call_on_start), server.publish_loop())
 
 
@@ -183,6 +197,7 @@ def cleanup_temp():
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+# 真正的启动入口在这里
 if __name__ == "__main__":
     if args.temp_directory:
         temp_dir = os.path.join(os.path.abspath(args.temp_directory), "temp")
@@ -197,11 +212,13 @@ if __name__ == "__main__":
         except:
             pass
 
+    # 开启事件循环, 可能是主要类
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    server = server.PromptServer(loop)
+    server = server.PromptServer(loop)  # 直接覆盖了导入的模块 server
     q = execution.PromptQueue(server)
 
+    # 额外的模型路径配置
     extra_model_paths_config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "extra_model_paths.yaml")
     if os.path.isfile(extra_model_paths_config_path):
         utils.extra_config.load_extra_path_config(extra_model_paths_config_path)
@@ -210,6 +227,7 @@ if __name__ == "__main__":
         for config_path in itertools.chain(*args.extra_model_paths_config):
             utils.extra_config.load_extra_path_config(config_path)
 
+    # 加载自定义节点
     nodes.init_extra_nodes(init_custom_nodes=not args.disable_all_custom_nodes)
 
     cuda_malloc_warning()
@@ -217,6 +235,7 @@ if __name__ == "__main__":
     server.add_routes()
     hijack_progress(server)
 
+    # 开启新线程, 用于处理 prompt
     threading.Thread(target=prompt_worker, daemon=True, args=(q, server,)).start()
 
     if args.output_directory:
@@ -241,6 +260,7 @@ if __name__ == "__main__":
         logging.info(f"Setting user directory to: {user_dir}")
         folder_paths.set_user_directory(user_dir)
 
+    # 用于 CI 测试
     if args.quick_test_for_ci:
         exit(0)
 
@@ -248,6 +268,7 @@ if __name__ == "__main__":
     call_on_start = None
     if args.auto_launch:
         def startup_server(scheme, address, port):
+            # 打开浏览器
             import webbrowser
             if os.name == 'nt' and address == '0.0.0.0':
                 address = '127.0.0.1'
@@ -258,6 +279,7 @@ if __name__ == "__main__":
 
     try:
         loop.run_until_complete(server.setup())
+        # 启动服务了
         loop.run_until_complete(run(server, address=args.listen, port=args.port, verbose=not args.dont_print_server, call_on_start=call_on_start))
     except KeyboardInterrupt:
         logging.info("\nStopped server")
