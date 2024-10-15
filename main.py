@@ -1,4 +1,5 @@
 import comfy.options
+
 comfy.options.enable_args_parsing()
 
 import os
@@ -16,6 +17,7 @@ def execute_prestartup_script():
     """
     执行预处理脚本
     """
+
     def execute_script(script_path):
         module_name = os.path.splitext(script_path)[0]
         try:
@@ -55,6 +57,7 @@ def execute_prestartup_script():
             print("{:6.1f} seconds{}:".format(n[0], import_message), n[1])
         print()
 
+
 execute_prestartup_script()
 
 
@@ -69,16 +72,18 @@ import logging
 import utils.extra_config
 
 if os.name == "nt":
-    logging.getLogger("xformers").addFilter(lambda record: 'A matching Triton is not available' not in record.getMessage())
+    logging.getLogger("xformers").addFilter(
+        lambda record: "A matching Triton is not available" not in record.getMessage()
+    )
 
 if __name__ == "__main__":
     if args.cuda_device is not None:
-        os.environ['CUDA_VISIBLE_DEVICES'] = str(args.cuda_device)
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.cuda_device)
         logging.info("Set cuda device to: {}".format(args.cuda_device))
 
     if args.deterministic:
-        if 'CUBLAS_WORKSPACE_CONFIG' not in os.environ:
-            os.environ['CUBLAS_WORKSPACE_CONFIG'] = ":4096:8"
+        if "CUBLAS_WORKSPACE_CONFIG" not in os.environ:
+            os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
     import cuda_malloc
 
@@ -106,7 +111,9 @@ def cuda_malloc_warning():
             if b in device_name:
                 cuda_malloc_warning = True
         if cuda_malloc_warning:
-            logging.warning("\nWARNING: this card most likely does not support cuda-malloc, if you get \"CUDA error\" please run ComfyUI with: --disable-cuda-malloc\n")
+            logging.warning(
+                '\nWARNING: this card most likely does not support cuda-malloc, if you get "CUDA error" please run ComfyUI with: --disable-cuda-malloc\n'
+            )
 
 
 def prompt_worker(q: execution.PromptQueue, server):
@@ -135,14 +142,15 @@ def prompt_worker(q: execution.PromptQueue, server):
             e.execute(item[2], prompt_id, item[3], item[4])
             need_gc = True
             # 任务结束标记
-            q.task_done(item_id,
-                        e.history_result,
-                        status=execution.PromptQueue.ExecutionStatus(
-                            status_str='success' if e.success else 'error',
-                            completed=e.success,
-                            messages=e.status_messages))
+            q.task_done(
+                item_id,
+                e.history_result,
+                status=execution.PromptQueue.ExecutionStatus(
+                    status_str="success" if e.success else "error", completed=e.success, messages=e.status_messages
+                ),
+            )
             if server.client_id is not None:
-                server.send_sync("executing", { "node": None, "prompt_id": prompt_id }, server.client_id)
+                server.send_sync("executing", {"node": None, "prompt_id": prompt_id}, server.client_id)
 
             current_time = time.perf_counter()
             execution_time = current_time - execution_start_time
@@ -172,7 +180,7 @@ def prompt_worker(q: execution.PromptQueue, server):
                 need_gc = False
 
 
-async def run(server, address='', port=8188, verbose=True, call_on_start=None):
+async def run(server, address="", port=8188, verbose=True, call_on_start=None):
     addresses = []
     for addr in address.split(","):
         addresses.append((addr, port))
@@ -188,6 +196,7 @@ def hijack_progress(server):
         server.send_sync("progress", progress, server.client_id)
         if preview_image is not None:
             server.send_sync(BinaryEventTypes.UNENCODED_PREVIEW_IMAGE, preview_image, server.client_id)
+
     comfy.utils.set_progress_bar_global_hook(hook)
 
 
@@ -208,6 +217,7 @@ if __name__ == "__main__":
     if args.windows_standalone_build:
         try:
             import new_updater
+
             new_updater.update_windows_updater()
         except:
             pass
@@ -236,25 +246,34 @@ if __name__ == "__main__":
     hijack_progress(server)
 
     # 开启新线程, 用于处理 prompt
-    threading.Thread(target=prompt_worker, daemon=True, args=(q, server,)).start()
+    threading.Thread(
+        target=prompt_worker,
+        daemon=True,
+        args=(
+            q,
+            server,
+        ),
+    ).start()
 
     if args.output_directory:
         output_dir = os.path.abspath(args.output_directory)
         logging.info(f"Setting output directory to: {output_dir}")
         folder_paths.set_output_directory(output_dir)
 
-    #These are the default folders that checkpoints, clip and vae models will be saved to when using CheckpointSave, etc.. nodes
+    # These are the default folders that checkpoints, clip and vae models will be saved to when using CheckpointSave, etc.. nodes
     folder_paths.add_model_folder_path("checkpoints", os.path.join(folder_paths.get_output_directory(), "checkpoints"))
     folder_paths.add_model_folder_path("clip", os.path.join(folder_paths.get_output_directory(), "clip"))
     folder_paths.add_model_folder_path("vae", os.path.join(folder_paths.get_output_directory(), "vae"))
-    folder_paths.add_model_folder_path("diffusion_models", os.path.join(folder_paths.get_output_directory(), "diffusion_models"))
+    folder_paths.add_model_folder_path(
+        "diffusion_models", os.path.join(folder_paths.get_output_directory(), "diffusion_models")
+    )
     folder_paths.add_model_folder_path("loras", os.path.join(folder_paths.get_output_directory(), "loras"))
 
     if args.input_directory:
         input_dir = os.path.abspath(args.input_directory)
         logging.info(f"Setting input directory to: {input_dir}")
         folder_paths.set_input_directory(input_dir)
-    
+
     if args.user_directory:
         user_dir = os.path.abspath(args.user_directory)
         logging.info(f"Setting user directory to: {user_dir}")
@@ -267,20 +286,31 @@ if __name__ == "__main__":
     os.makedirs(folder_paths.get_temp_directory(), exist_ok=True)
     call_on_start = None
     if args.auto_launch:
+
         def startup_server(scheme, address, port):
             # 打开浏览器
             import webbrowser
-            if os.name == 'nt' and address == '0.0.0.0':
-                address = '127.0.0.1'
-            if ':' in address:
+
+            if os.name == "nt" and address == "0.0.0.0":
+                address = "127.0.0.1"
+            if ":" in address:
                 address = "[{}]".format(address)
             webbrowser.open(f"{scheme}://{address}:{port}")
+
         call_on_start = startup_server
 
     try:
         loop.run_until_complete(server.setup())
         # 启动服务了
-        loop.run_until_complete(run(server, address=args.listen, port=args.port, verbose=not args.dont_print_server, call_on_start=call_on_start))
+        loop.run_until_complete(
+            run(
+                server,
+                address=args.listen,
+                port=args.port,
+                verbose=not args.dont_print_server,
+                call_on_start=call_on_start,
+            )
+        )
     except KeyboardInterrupt:
         logging.info("\nStopped server")
 
