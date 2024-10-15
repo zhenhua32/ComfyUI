@@ -166,6 +166,9 @@ def create_origin_only_middleware():
 
 
 class PromptServer:
+    """
+    主要的类
+    """
     def __init__(self, loop):
         PromptServer.instance = self
 
@@ -188,15 +191,16 @@ class PromptServer:
             middlewares.append(create_origin_only_middleware())
 
         max_upload_size = round(args.max_upload_size * 1024 * 1024)
+        # 真的是好久没看到用 aiohttp 做后端的了
         self.app = web.Application(client_max_size=max_upload_size, middlewares=middlewares)
         self.sockets = dict()
         self.web_root = (
             FrontendManager.init_frontend(args.front_end_version)
             if args.front_end_root is None
             else args.front_end_root
-        )
+        )  # 前端目录, 应该就是当前目录下的 web 文件夹
         logging.info(f"[Prompt Server] web root: {self.web_root}")
-        routes = web.RouteTableDef()
+        routes = web.RouteTableDef()  # 路由表
         self.routes = routes
         self.last_node_id = None
         self.client_id = None
@@ -214,6 +218,7 @@ class PromptServer:
             else:
                 sid = uuid.uuid4().hex
 
+            # 保存当前的 websocket
             self.sockets[sid] = ws
 
             try:
@@ -232,6 +237,7 @@ class PromptServer:
 
         @routes.get("/")
         async def get_root(request):
+            # 入口网页
             response = web.FileResponse(os.path.join(self.web_root, "index.html"))
             response.headers["Cache-Control"] = "no-cache"
             response.headers["Pragma"] = "no-cache"
@@ -240,25 +246,28 @@ class PromptServer:
 
         @routes.get("/embeddings")
         def get_embeddings(self):
+            # 获取可用的 embeddings 列表
             embeddings = folder_paths.get_filename_list("embeddings")
             return web.json_response(list(map(lambda a: os.path.splitext(a)[0], embeddings)))
 
         @routes.get("/models")
         def list_model_types(request):
+            # 获取可用的模型列表
             model_types = list(folder_paths.folder_names_and_paths.keys())
-
             return web.json_response(model_types)
 
         @routes.get("/models/{folder}")
         async def get_models(request):
+            # 获取某个模型目录下的所有文件
             folder = request.match_info.get("folder", None)
-            if not folder in folder_paths.folder_names_and_paths:
+            if folder not in folder_paths.folder_names_and_paths:
                 return web.Response(status=404)
             files = folder_paths.get_filename_list(folder)
             return web.json_response(files)
 
         @routes.get("/extensions")
         async def get_extensions(request):
+            # 获取所有的扩展列表
             files = glob.glob(os.path.join(glob.escape(self.web_root), "extensions/**/*.js"), recursive=True)
 
             extensions = list(map(lambda f: "/" + os.path.relpath(f, self.web_root).replace("\\", "/"), files))
@@ -280,6 +289,7 @@ class PromptServer:
             return web.json_response(extensions)
 
         def get_dir_by_type(dir_type):
+            # 根据 dir_type 获取目录
             if dir_type is None:
                 dir_type = "input"
 
@@ -293,6 +303,7 @@ class PromptServer:
             return type_dir, dir_type
 
         def compare_image_hash(filepath, image):
+            # 比较两个图片的哈希值是否相同, 一个来自文件, 一个来自内存
             hasher = node_helpers.hasher()
 
             # function to compare hashes of two images to see if it already exists, fix to #3465
@@ -333,6 +344,7 @@ class PromptServer:
                 split = os.path.splitext(filename)
 
                 if overwrite is not None and (overwrite == "true" or overwrite == "1"):
+                    # 直接覆盖
                     pass
                 else:
                     i = 1
@@ -341,11 +353,14 @@ class PromptServer:
                             filepath, image
                         ):  # compare hash to prevent saving of duplicates with same name, fix for #3465
                             image_is_duplicate = True
+                            # 跳过已存在的图片文件
                             break
+                        # 取个新名字
                         filename = f"{split[0]} ({i}){split[1]}"
                         filepath = os.path.join(full_output_folder, filename)
                         i += 1
 
+                # 保存文件
                 if not image_is_duplicate:
                     if image_save_function is not None:
                         image_save_function(image, post, filepath)
@@ -359,13 +374,16 @@ class PromptServer:
 
         @routes.post("/upload/image")
         async def upload_image(request):
+            # 上传图片
             post = await request.post()
             return image_upload(post)
 
         @routes.post("/upload/mask")
         async def upload_mask(request):
+            # 上传掩码图片
             post = await request.post()
 
+            # 新的文件保存方式
             def image_save_function(image, post, filepath):
                 original_ref = json.loads(post.get("original_ref"))
                 filename, output_dir = folder_paths.annotated_filepath(original_ref["filename"])
